@@ -11,6 +11,7 @@ namespace TraefikPreConfiguratorWindows
     using System.Threading.Tasks;
     using Microsoft.Azure.KeyVault;
     using Microsoft.Azure.KeyVault.Models;
+    using Microsoft.Azure.Services.AppAuthentication;
     using Microsoft.IdentityModel.Clients.ActiveDirectory;
 
     /// <summary>
@@ -26,7 +27,7 @@ namespace TraefikPreConfiguratorWindows
         /// <summary>
         /// Arguments to be used to extract .crt out of .Pfx.
         /// </summary>
-        private const string PublicKeyExportArguments = "pkcs12 -in \"\"{0}\"\" -clcerts -nokeys -out \"\"{1}\"\" -passin pass:{2}";
+        private const string PublicKeyExportArguments = "pkcs12 -in \"\"{0}\"\" -nokeys -out \"\"{1}\"\" -passin pass:{2}";
 
         /// <summary>
         /// Processes the certificate management.
@@ -57,15 +58,9 @@ namespace TraefikPreConfiguratorWindows
             KeyVaultClient keyVaultClient = null;
             if (!string.IsNullOrEmpty(keyVaultUri))
             {
-                if (string.IsNullOrEmpty(keyVaultClientId))
+                if (string.IsNullOrEmpty(keyVaultClientId) && (!string.IsNullOrEmpty(keyVaultClientSecret) || !string.IsNullOrEmpty(keyVaultClientCert)))
                 {
-                    Logger.LogError(CallInfo.Site(), "If KeyVaultUri is specified, KeyVault ClientId must be specified");
-                    return ExitCode.KeyVaultConfigurationIncomplete;
-                }
-
-                if (string.IsNullOrEmpty(keyVaultClientSecret) && string.IsNullOrEmpty(keyVaultClientCert))
-                {
-                    Logger.LogError(CallInfo.Site(), "If KeyVaultUri is specified, KeyVault ClientSecret or KeyVault ClientCert must be specified");
+                    Logger.LogError(CallInfo.Site(), "If KeyVaultUri is specified, KeyVault ClientId and ClientSecret/ClientCert must be specified");
                     return ExitCode.KeyVaultConfigurationIncomplete;
                 }
 
@@ -77,24 +72,32 @@ namespace TraefikPreConfiguratorWindows
                 }
                 else
                 {
-                    X509Certificate2Collection keyVaultCerts = CertHelpers.FindCertificates(keyVaultClientCert, X509FindType.FindByThumbprint);
-
-                    if (keyVaultCerts.Count == 0)
+                    if (!string.IsNullOrEmpty(keyVaultClientCert))
                     {
-                        Logger.LogError(CallInfo.Site(), "Failed to find Client cert with thumbprint '{0}'", keyVaultClientCert);
-                        return ExitCode.KeyVaultConfigurationIncomplete;
-                    }
+                        X509Certificate2Collection keyVaultCerts = CertHelpers.FindCertificates(keyVaultClientCert, X509FindType.FindByThumbprint);
 
-                    KeyVaultClient.AuthenticationCallback callback =
-                        (authority, resource, scope) => GetTokenFromClientCertificateAsync(authority, resource, keyVaultClientId, keyVaultCerts[0]);
-                    keyVaultClient = new KeyVaultClient(callback);
+                        if (keyVaultCerts.Count == 0)
+                        {
+                            Logger.LogError(CallInfo.Site(), "Failed to find Client cert with thumbprint '{0}'", keyVaultClientCert);
+                            return ExitCode.KeyVaultConfigurationIncomplete;
+                        }
+
+                        KeyVaultClient.AuthenticationCallback callback =
+                            (authority, resource, scope) => GetTokenFromClientCertificateAsync(authority, resource, keyVaultClientId, keyVaultCerts[0]);
+                        keyVaultClient = new KeyVaultClient(callback);
+                    }
+                    else
+                    {
+                        var azureServiceTokenProvider = new AzureServiceTokenProvider();
+                        keyVaultClient = new KeyVaultClient(new KeyVaultClient.AuthenticationCallback(azureServiceTokenProvider.KeyVaultTokenCallback));
+                    }
                 }
             }
 
             // 2. Figure all the certs which need processing.
             string[] certsToConfigure = certConfiguration.Split(',');
             string currentExeDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-            string fullDirectoryPathForCerts = Path.Combine(currentExeDirectory, directoryPath);
+            string fullDirectoryPathForCerts = Path.Combine(Directory.GetCurrentDirectory(), directoryPath);
 
             // 3. Process specified certs one by one.
             foreach (string certToConfigure in certsToConfigure)
@@ -335,7 +338,7 @@ namespace TraefikPreConfiguratorWindows
         /// <returns>Exit code for the operation.</returns>
         private static ExitCode ConvertPfxIntoPemFormat(string certificateName, string certDirectoryPath, string opensslExeDirectory, string password)
         {
-            string opensslPath = Path.Combine(opensslExeDirectory, "openssl.exe");
+            string opensslPath = Path.Combine(opensslExeDirectory, "OpenSSL", "openssl.exe");
             string pathToPfx = Path.Combine(certDirectoryPath, certificateName + ".pfx");
 
             string keyExtractionProcessArgs = string.Format(
