@@ -3,7 +3,7 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp2.2</TargetFramework>
     <PackageTags>ServiceFabric Traefik</PackageTags>
-    <PackAsTool>true</PackAsTool>
+   
     <PackageLicenseUrl>https://raw.githubusercontent.com/SoCreate/PreConfiguratorForTraefikOnServiceFabric/master/LICENSE</PackageLicenseUrl>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <RepositoryType>git</RepositoryType>
