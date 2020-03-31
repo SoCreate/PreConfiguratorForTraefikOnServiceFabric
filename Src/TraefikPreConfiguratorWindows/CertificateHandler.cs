@@ -262,15 +262,21 @@ namespace TraefikPreConfiguratorWindows
             var certCollection = new X509Certificate2Collection();
             var chain = new X509Chain();
             chain.Build(selectedCertificate);
+ 
 
             foreach (var item in chain.ChainElements)
             {
                 if (item.Certificate.Thumbprint == selectedCertificate.Thumbprint)
                     continue;
 
-                certCollection.Add(item.Certificate);
+               if(item.Certificate.Issuer != item.Certificate.Subject) 
+               {
+                    certCollection.Add(item.Certificate);
+               }
             }
+
             certCollection.Add(selectedCertificate);
+            
             byte[] rawCertData = certCollection.Export(X509ContentType.Pfx, (string)null);
 
             return Task.FromResult(SaveCertificatePrivateKeyToDisk(rawCertData, certificateName, fullDirectoryPath));
