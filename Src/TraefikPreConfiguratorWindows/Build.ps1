@@ -1,3 +1,2 @@
-dotnet tool install --tool-path . dotnet-warp
-dotnet-warp
-Move-Item -Force .\TraefikPreConfiguratorWindows.exe ..\..\Dist\TraefikPreConfiguratorWindows.exe
+dotnet publish -r win-x64 -c Release /p:PublishSingleFile=true
+Move-Item -Force .\bin\Release\netcoreapp3.1\win-x64\publish\TraefikPreConfiguratorWindows.exe ..\..\Dist\TraefikPreConfiguratorWindows.exe
